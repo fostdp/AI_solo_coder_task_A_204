@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS sensor_data (
     grain_size_gt5mm Float64,
     yield Float64,
     wear_degree Float64,
-    roller_gap Float64
+    roller_gap Float64,
+    moisture Float64
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (mill_id, timestamp)
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS grain_size_stats (
     avg_grain_size_gt5mm Float64,
     avg_yield Float64,
     total_yield Float64,
+    avg_moisture Float64,
     sample_count UInt64
 ) ENGINE = SummingMergeTree()
 PARTITION BY date
@@ -118,6 +120,7 @@ SELECT
     avg(grain_size_gt5mm) AS avg_grain_size_gt5mm,
     avg(yield) AS avg_yield,
     sum(yield) AS total_yield,
+    avg(moisture) AS avg_moisture,
     count() AS sample_count
 FROM sensor_data
 GROUP BY mill_id, date, hour;

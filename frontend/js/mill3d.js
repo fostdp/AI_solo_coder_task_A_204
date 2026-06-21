@@ -10,7 +10,7 @@ class StoneMill3D {
         this.roller = null;
         this.rollerArm = null;
         this.millBase = null;
-        this.grainParticles = null;
+        this.grainInstanced = null;
         this.forceArrows = [];
 
         this.particleData = [];
@@ -21,8 +21,21 @@ class StoneMill3D {
         this.isSimulating = false;
         this.rotationAngle = 0;
 
+        this.isMobile = this.detectMobile();
+        this.maxParticles = this.isMobile ? 500 : 2000;
+        this.useInstanced = true;
+
+        this.dummy = new THREE.Object3D();
+        this.colorTemp = new THREE.Color();
+
         this.animationId = null;
         this.init();
+    }
+
+    detectMobile() {
+        const ua = navigator.userAgent;
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+            || window.innerWidth < 768;
     }
 
     init() {
@@ -38,10 +51,14 @@ class StoneMill3D {
         this.camera.position.set(4, 3, 4);
         this.camera.lookAt(0, 0, 0);
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: !this.isMobile,
+            alpha: true,
+            powerPreference: this.isMobile ? 'low-power' : 'high-performance'
+        });
         this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.shadowMap.enabled = true;
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
+        this.renderer.shadowMap.enabled = !this.isMobile;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.container.appendChild(this.renderer.domElement);
 
@@ -65,33 +82,37 @@ class StoneMill3D {
         const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
         this.scene.add(ambientLight);
 
-        const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const mainLight = new THREE.DirectionalLight(0xffffff, this.isMobile ? 0.6 : 0.8);
         mainLight.position.set(5, 8, 5);
-        mainLight.castShadow = true;
-        mainLight.shadow.mapSize.width = 2048;
-        mainLight.shadow.mapSize.height = 2048;
-        mainLight.shadow.camera.near = 0.5;
-        mainLight.shadow.camera.far = 50;
-        mainLight.shadow.camera.left = -10;
-        mainLight.shadow.camera.right = 10;
-        mainLight.shadow.camera.top = 10;
-        mainLight.shadow.camera.bottom = -10;
+        mainLight.castShadow = !this.isMobile;
+        if (!this.isMobile) {
+            mainLight.shadow.mapSize.width = 1024;
+            mainLight.shadow.mapSize.height = 1024;
+            mainLight.shadow.camera.near = 0.5;
+            mainLight.shadow.camera.far = 50;
+            mainLight.shadow.camera.left = -10;
+            mainLight.shadow.camera.right = 10;
+            mainLight.shadow.camera.top = 10;
+            mainLight.shadow.camera.bottom = -10;
+        }
         this.scene.add(mainLight);
 
         const fillLight = new THREE.DirectionalLight(0xffa500, 0.3);
         fillLight.position.set(-5, 3, -5);
         this.scene.add(fillLight);
 
-        const pointLight = new THREE.PointLight(0xff6600, 0.5, 10);
-        pointLight.position.set(0, 2, 0);
-        this.scene.add(pointLight);
+        if (!this.isMobile) {
+            const pointLight = new THREE.PointLight(0xff6600, 0.5, 10);
+            pointLight.position.set(0, 2, 0);
+            this.scene.add(pointLight);
+        }
     }
 
     createMillModel() {
         const baseGroup = new THREE.Group();
         this.millBase = baseGroup;
 
-        const baseGeometry = new THREE.CylinderGeometry(2.1, 2.2, 0.3, 64);
+        const baseGeometry = new THREE.CylinderGeometry(2.1, 2.2, 0.3, this.isMobile ? 32 : 64);
         const stoneMaterial = new THREE.MeshStandardMaterial({
             color: 0x8b7355,
             roughness: 0.9,
@@ -99,10 +120,10 @@ class StoneMill3D {
         });
         const base = new THREE.Mesh(baseGeometry, stoneMaterial);
         base.position.y = -0.15;
-        base.receiveShadow = true;
+        base.receiveShadow = !this.isMobile;
         baseGroup.add(base);
 
-        const platformGeometry = new THREE.CylinderGeometry(2.0, 2.0, 0.05, 128);
+        const platformGeometry = new THREE.CylinderGeometry(2.0, 2.0, 0.05, this.isMobile ? 64 : 128);
         const platformMaterial = new THREE.MeshStandardMaterial({
             color: 0x6b5344,
             roughness: 0.8,
@@ -110,10 +131,10 @@ class StoneMill3D {
         });
         const platform = new THREE.Mesh(platformGeometry, platformMaterial);
         platform.position.y = 0.025;
-        platform.receiveShadow = true;
+        platform.receiveShadow = !this.isMobile;
         baseGroup.add(platform);
 
-        const grooveGeometry = new THREE.TorusGeometry(1.8, 0.02, 8, 128);
+        const grooveGeometry = new THREE.TorusGeometry(1.8, 0.02, 8, this.isMobile ? 64 : 128);
         const grooveMaterial = new THREE.MeshStandardMaterial({
             color: 0x3d2817,
             roughness: 0.9,
@@ -128,7 +149,7 @@ class StoneMill3D {
             baseGroup.add(groove);
         }
 
-        const edgeGeometry = new THREE.TorusGeometry(2.0, 0.08, 16, 128);
+        const edgeGeometry = new THREE.TorusGeometry(2.0, 0.08, 16, this.isMobile ? 64 : 128);
         const edgeMaterial = new THREE.MeshStandardMaterial({
             color: 0x4a3728,
             roughness: 0.7,
@@ -139,7 +160,7 @@ class StoneMill3D {
         edge.position.y = 0.05;
         baseGroup.add(edge);
 
-        const centerPoleGeometry = new THREE.CylinderGeometry(0.05, 0.06, 1.5, 16);
+        const centerPoleGeometry = new THREE.CylinderGeometry(0.05, 0.06, 1.5, this.isMobile ? 8 : 16);
         const woodMaterial = new THREE.MeshStandardMaterial({
             color: 0x5c4033,
             roughness: 0.8,
@@ -147,7 +168,7 @@ class StoneMill3D {
         });
         const centerPole = new THREE.Mesh(centerPoleGeometry, woodMaterial);
         centerPole.position.y = 0.75;
-        centerPole.castShadow = true;
+        centerPole.castShadow = !this.isMobile;
         baseGroup.add(centerPole);
 
         this.scene.add(baseGroup);
@@ -167,19 +188,19 @@ class StoneMill3D {
         const arm = new THREE.Mesh(armGeometry, woodMaterial);
         arm.position.x = 0.75;
         arm.position.y = 1.2;
-        arm.castShadow = true;
+        arm.castShadow = !this.isMobile;
         armGroup.add(arm);
 
         const supportGeometry = new THREE.BoxGeometry(0.1, 1.0, 0.1);
         const support = new THREE.Mesh(supportGeometry, woodMaterial);
         support.position.set(1.5, 0.7, 0);
-        support.castShadow = true;
+        support.castShadow = !this.isMobile;
         armGroup.add(support);
 
         const rollerGroup = new THREE.Group();
         this.roller = rollerGroup;
 
-        const rollerGeometry = new THREE.CylinderGeometry(0.8, 0.8, 0.3, 32);
+        const rollerGeometry = new THREE.CylinderGeometry(0.8, 0.8, 0.3, this.isMobile ? 16 : 32);
         const stoneMaterial = new THREE.MeshStandardMaterial({
             color: 0x7a6b5a,
             roughness: 0.85,
@@ -187,11 +208,11 @@ class StoneMill3D {
         });
         const rollerMesh = new THREE.Mesh(rollerGeometry, stoneMaterial);
         rollerMesh.rotation.z = Math.PI / 2;
-        rollerMesh.castShadow = true;
-        rollerMesh.receiveShadow = true;
+        rollerMesh.castShadow = !this.isMobile;
+        rollerMesh.receiveShadow = !this.isMobile;
         rollerGroup.add(rollerMesh);
 
-        const rimGeometry = new THREE.TorusGeometry(0.8, 0.02, 12, 64);
+        const rimGeometry = new THREE.TorusGeometry(0.8, 0.02, 12, this.isMobile ? 32 : 64);
         const rimMaterial = new THREE.MeshStandardMaterial({
             color: 0x5a4a3a,
             roughness: 0.7,
@@ -207,16 +228,18 @@ class StoneMill3D {
         rim2.position.z = -0.15;
         rollerGroup.add(rim2);
 
-        const patternGeometry = new THREE.CylinderGeometry(0.75, 0.75, 0.31, 32, 1, true);
-        const patternMaterial = new THREE.MeshStandardMaterial({
-            color: 0x5a4a3a,
-            roughness: 0.9,
-            metalness: 0.05,
-            side: THREE.DoubleSide
-        });
-        const pattern = new THREE.Mesh(patternGeometry, patternMaterial);
-        pattern.rotation.z = Math.PI / 2;
-        rollerGroup.add(pattern);
+        if (!this.isMobile) {
+            const patternGeometry = new THREE.CylinderGeometry(0.75, 0.75, 0.31, 32, 1, true);
+            const patternMaterial = new THREE.MeshStandardMaterial({
+                color: 0x5a4a3a,
+                roughness: 0.9,
+                metalness: 0.05,
+                side: THREE.DoubleSide
+            });
+            const pattern = new THREE.Mesh(patternGeometry, patternMaterial);
+            pattern.rotation.z = Math.PI / 2;
+            rollerGroup.add(pattern);
+        }
 
         rollerGroup.position.set(1.5, 0.8, 0);
         armGroup.add(rollerGroup);
@@ -234,7 +257,7 @@ class StoneMill3D {
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.31;
-        ground.receiveShadow = true;
+        ground.receiveShadow = !this.isMobile;
         this.scene.add(ground);
 
         const gridHelper = new THREE.GridHelper(20, 40, 0x333344, 0x222233);
@@ -243,14 +266,15 @@ class StoneMill3D {
     }
 
     createGrainParticles(count = 200) {
-        if (this.grainParticles) {
-            this.scene.remove(this.grainParticles);
+        const actualCount = Math.min(count, this.maxParticles);
+
+        if (this.grainInstanced) {
+            this.scene.remove(this.grainInstanced);
+            if (this.grainInstanced.geometry) this.grainInstanced.geometry.dispose();
+            if (this.grainInstanced.material) this.grainInstanced.material.dispose();
         }
 
         this.particleData = [];
-        const positions = new Float32Array(count * 3);
-        const colors = new Float32Array(count * 3);
-        const sizes = new Float32Array(count);
 
         const grainColors = [
             new THREE.Color(0xd4a574),
@@ -260,24 +284,32 @@ class StoneMill3D {
             new THREE.Color(0xf0d5a8)
         ];
 
-        for (let i = 0; i < count; i++) {
+        const geometry = new THREE.SphereGeometry(0.03, this.isMobile ? 6 : 8, this.isMobile ? 6 : 8);
+
+        const material = new THREE.MeshStandardMaterial({
+            vertexColors: false,
+            roughness: 0.7,
+            metalness: 0.05
+        });
+
+        this.grainInstanced = new THREE.InstancedMesh(geometry, material, actualCount);
+        this.grainInstanced.castShadow = !this.isMobile;
+        this.grainInstanced.receiveShadow = !this.isMobile;
+        this.grainInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        if (this.grainInstanced.instanceColor) {
+            this.grainInstanced.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        }
+
+        for (let i = 0; i < actualCount; i++) {
             const angle = Math.random() * Math.PI * 2;
             const radius = 0.3 + Math.random() * 1.4;
             const x = Math.cos(angle) * radius;
             const z = Math.sin(angle) * radius;
             const y = 0.05 + Math.random() * 0.1;
 
-            positions[i * 3] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = z;
-
-            const color = grainColors[Math.floor(Math.random() * grainColors.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-
             const size = 0.02 + Math.random() * 0.04;
-            sizes[i] = size;
+            const color = grainColors[Math.floor(Math.random() * grainColors.length)];
 
             this.particleData.push({
                 x, y, z,
@@ -286,31 +318,33 @@ class StoneMill3D {
                 mass: size * size * size * 1200,
                 originalY: y,
                 broken: false,
-                colorIndex: Math.floor(Math.random() * grainColors.length)
+                colorIndex: Math.floor(Math.random() * grainColors.length),
+                color: color.clone()
             });
+
+            this.dummy.position.set(x, y, z);
+            this.dummy.scale.set(size / 0.03, size / 0.03, size / 0.03);
+            this.dummy.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            this.dummy.updateMatrix();
+            this.grainInstanced.setMatrixAt(i, this.dummy.matrix);
+            this.grainInstanced.setColorAt(i, color);
         }
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        this.grainInstanced.count = actualCount;
+        this.grainInstanced.instanceMatrix.needsUpdate = true;
+        if (this.grainInstanced.instanceColor) {
+            this.grainInstanced.instanceColor.needsUpdate = true;
+        }
 
-        const material = new THREE.PointsMaterial({
-            size: 0.05,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.9,
-            sizeAttenuation: true
-        });
-
-        this.grainParticles = new THREE.Points(geometry, material);
-        this.scene.add(this.grainParticles);
+        this.scene.add(this.grainInstanced);
     }
 
     updateParticlePositions() {
-        if (!this.grainParticles || !this.showParticles) return;
-
-        const positions = this.grainParticles.geometry.attributes.position.array;
-        const colors = this.grainParticles.geometry.attributes.color.array;
+        if (!this.grainInstanced || !this.showParticles) return;
 
         const rollerX = 1.5 * Math.cos(this.rotationAngle);
         const rollerZ = 1.5 * Math.sin(this.rotationAngle);
@@ -374,68 +408,67 @@ class StoneMill3D {
                 p.vz *= 0.9;
             }
 
-            positions[i * 3] = p.x;
-            positions[i * 3 + 1] = p.y;
-            positions[i * 3 + 2] = p.z;
+            const scale = p.radius / 0.03;
+            this.dummy.position.set(p.x, p.y, p.z);
+            this.dummy.scale.set(scale, scale, scale);
+            this.dummy.rotation.x += p.vx * 0.1;
+            this.dummy.rotation.z += p.vz * 0.1;
+            this.dummy.updateMatrix();
+            this.grainInstanced.setMatrixAt(i, this.dummy.matrix);
         }
 
-        this.grainParticles.geometry.attributes.position.needsUpdate = true;
+        this.grainInstanced.instanceMatrix.needsUpdate = true;
     }
 
     breakParticle(index) {
         const p = this.particleData[index];
         p.broken = true;
 
-        const colors = this.grainParticles.geometry.attributes.color.array;
-        colors[index * 3] = 0.5;
-        colors[index * 3 + 1] = 0.5;
-        colors[index * 3 + 2] = 0.5;
+        this.grainInstanced.setColorAt(index, new THREE.Color(0.5, 0.5, 0.5));
 
-        const positions = this.grainParticles.geometry.attributes.position.array;
-        positions[index * 3 + 1] = -10;
+        this.dummy.position.set(p.x, -10, p.z);
+        this.dummy.updateMatrix();
+        this.grainInstanced.setMatrixAt(index, this.dummy.matrix);
 
-        for (let i = 0; i < 3; i++) {
-            const newIdx = this.particleData.length;
-            const angle = Math.random() * Math.PI * 2;
-            const newP = {
-                x: p.x + Math.cos(angle) * 0.02,
-                y: p.y + 0.02,
-                z: p.z + Math.sin(angle) * 0.02,
-                vx: p.vx + (Math.random() - 0.5) * 0.1,
-                vy: p.vy + Math.random() * 0.05,
-                vz: p.vz + (Math.random() - 0.5) * 0.1,
-                radius: p.radius * 0.6,
-                mass: p.mass * 0.3,
-                originalY: 0.05,
-                broken: false,
-                colorIndex: p.colorIndex
-            };
+        if (this.particleData.length < this.maxParticles) {
+            for (let i = 0; i < 2 && this.particleData.length < this.maxParticles; i++) {
+                const newIdx = this.particleData.length;
+                const angle = Math.random() * Math.PI * 2;
+                const newP = {
+                    x: p.x + Math.cos(angle) * 0.02,
+                    y: p.y + 0.02,
+                    z: p.z + Math.sin(angle) * 0.02,
+                    vx: p.vx + (Math.random() - 0.5) * 0.1,
+                    vy: p.vy + Math.random() * 0.05,
+                    vz: p.vz + (Math.random() - 0.5) * 0.1,
+                    radius: p.radius * 0.6,
+                    mass: p.mass * 0.3,
+                    originalY: 0.05,
+                    broken: false,
+                    colorIndex: p.colorIndex,
+                    color: p.color.clone()
+                };
 
-            this.particleData.push(newP);
+                this.particleData.push(newP);
 
-            const newPositions = new Float32Array((newIdx + 1) * 3);
-            const newColors = new Float32Array((newIdx + 1) * 3);
-            newPositions.set(positions);
-            newColors.set(colors);
+                const scale = newP.radius / 0.03;
+                this.dummy.position.set(newP.x, newP.y, newP.z);
+                this.dummy.scale.set(scale, scale, scale);
+                this.dummy.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                this.dummy.updateMatrix();
+                this.grainInstanced.setMatrixAt(newIdx, this.dummy.matrix);
+                this.grainInstanced.setColorAt(newIdx, newP.color);
+            }
 
-            newPositions[newIdx * 3] = newP.x;
-            newPositions[newIdx * 3 + 1] = newP.y;
-            newPositions[newIdx * 3 + 2] = newP.z;
-
-            const grainColors = [
-                new THREE.Color(0xd4a574),
-                new THREE.Color(0xc4956a),
-                new THREE.Color(0xb8865a),
-                new THREE.Color(0xe8c49c),
-                new THREE.Color(0xf0d5a8)
-            ];
-            const color = grainColors[newP.colorIndex];
-            newColors[newIdx * 3] = color.r;
-            newColors[newIdx * 3 + 1] = color.g;
-            newColors[newIdx * 3 + 2] = color.b;
-
-            this.grainParticles.geometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
-            this.grainParticles.geometry.setAttribute('color', new THREE.BufferAttribute(newColors, 3));
+            this.grainInstanced.count = this.particleData.length;
+            this.grainInstanced.instanceMatrix.needsUpdate = true;
+            if (this.grainInstanced.instanceColor) {
+                this.grainInstanced.instanceColor.needsUpdate = true;
+            }
         }
     }
 
@@ -478,14 +511,14 @@ class StoneMill3D {
         }
     }
 
-    setShowParticles(show) {
+    showParticles(show) {
         this.showParticles = show;
-        if (this.grainParticles) {
-            this.grainParticles.visible = show;
+        if (this.grainInstanced) {
+            this.grainInstanced.visible = show;
         }
     }
 
-    setShowForces(show) {
+    showForceArrows(show) {
         this.showForces = show;
         if (!show) {
             this.forceArrows.forEach(item => this.scene.remove(item.arrow));
@@ -502,7 +535,7 @@ class StoneMill3D {
         this.isSimulating = false;
     }
 
-    resetView() {
+    resetCamera() {
         this.camera.position.set(4, 3, 4);
         this.camera.lookAt(0, 0, 0);
         this.controls.reset();
@@ -538,6 +571,40 @@ class StoneMill3D {
         }
 
         return bins;
+    }
+
+    getStats() {
+        let particleCount = 0;
+        let brokenCount = 0;
+        let totalForce = 0;
+        let maxForce = 0;
+
+        for (const p of this.particleData) {
+            if (p.broken) {
+                brokenCount++;
+            } else {
+                particleCount++;
+                const force = Math.sqrt(p.vx * p.vx + p.vy * p.vy + p.vz * p.vz) * p.mass;
+                totalForce += force;
+                maxForce = Math.max(maxForce, force);
+            }
+        }
+
+        return {
+            particleCount: particleCount,
+            breakageRatio: particleCount > 0 ? brokenCount / particleCount : 0,
+            avgForce: particleCount > 0 ? totalForce / particleCount : 0,
+            maxForce: maxForce,
+            simTime: this.isSimulating ? Date.now() / 1000 % 1000 : 0
+        };
+    }
+
+    resetParticles(count = 200) {
+        this.createGrainParticles(count);
+    }
+
+    resize() {
+        this.onResize();
     }
 
     animate() {
@@ -579,6 +646,11 @@ class StoneMill3D {
     dispose() {
         if (this.animationId) {
             cancelAnimationFrame(this.animationId);
+        }
+
+        if (this.grainInstanced) {
+            if (this.grainInstanced.geometry) this.grainInstanced.geometry.dispose();
+            if (this.grainInstanced.material) this.grainInstanced.material.dispose();
         }
 
         if (this.renderer) {

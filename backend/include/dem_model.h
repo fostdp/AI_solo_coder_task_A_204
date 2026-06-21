@@ -4,6 +4,8 @@
 #include <vector>
 #include <random>
 #include <functional>
+#include <unordered_map>
+#include <array>
 
 namespace stone_mill {
 
@@ -26,12 +28,29 @@ public:
 
     void set_force_callback(std::function<void(const DEMParticle&, double)> callback);
 
+    std::vector<DEMParticle> coarse_grain(const std::vector<DEMParticle>& fine_particles);
+    std::vector<DEMParticle> reconstruct_fine(const std::vector<DEMParticle>& coarse_particles);
+
 private:
     struct Contact {
         size_t i, j;
         double nx, ny, nz;
         double overlap;
     };
+
+    struct GridCell {
+        std::vector<size_t> particle_indices;
+    };
+
+    using SpatialGrid = std::unordered_map<int64_t, GridCell>;
+
+    int64_t grid_key(int gx, int gy, int gz) const;
+    void build_spatial_grid(const std::vector<DEMParticle>& particles, SpatialGrid& grid) const;
+    void find_contacts_grid(const std::vector<DEMParticle>& particles,
+                          const SpatialGrid& grid,
+                          std::vector<Contact>& contacts) const;
+    void find_contacts_brute(const std::vector<DEMParticle>& particles,
+                           std::vector<Contact>& contacts) const;
 
     void apply_gravity(std::vector<DEMParticle>& particles);
     void compute_forces(std::vector<DEMParticle>& particles,
@@ -47,6 +66,9 @@ private:
                                          std::mt19937& rng);
 
     bool should_break(const DEMParticle& particle);
+    double compute_moisture_strength_factor(double moisture) const;
+    double compute_cohesion_force(const DEMParticle& p1, const DEMParticle& p2,
+                                  double nx, double ny, double nz) const;
     double compute_contact_force(const DEMParticle& p1, const DEMParticle& p2,
                               double& nx, double& ny, double& nz,
                               double& overlap);
@@ -61,6 +83,10 @@ private:
 
     double roller_angle_ = 0.0;
     uint32_t next_particle_id_ = 0;
+
+    size_t grid_size_x_ = 0;
+    size_t grid_size_y_ = 0;
+    size_t grid_size_z_ = 0;
 };
 
 }

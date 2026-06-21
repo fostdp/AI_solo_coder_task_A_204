@@ -197,6 +197,9 @@ std::string HTTPServer::handle_run_dem_simulation(const std::unordered_map<std::
     double roller_gap = 2.0;
     double sim_time = 0.1;
 
+    DEMConfig dem_config;
+    BreakageModel breakage_model;
+
     auto it = params.find("mill_id");
     if (it != params.end()) mill_id = std::stoi(it->second);
     it = params.find("particle_count");
@@ -208,8 +211,28 @@ std::string HTTPServer::handle_run_dem_simulation(const std::unordered_map<std::
     it = params.find("sim_time");
     if (it != params.end()) sim_time = std::stod(it->second);
 
+    it = params.find("use_coarse_graining");
+    if (it != params.end()) dem_config.use_coarse_graining = it->second == "1" || it->second == "true";
+    it = params.find("coarse_scale");
+    if (it != params.end()) dem_config.coarse_scale = static_cast<uint32_t>(std::stoi(it->second));
+    it = params.find("use_spatial_grid");
+    if (it != params.end()) dem_config.use_spatial_grid = it->second == "1" || it->second == "true";
+    it = params.find("grid_cell_size");
+    if (it != params.end()) dem_config.grid_cell_size = std::stod(it->second);
+
+    it = params.find("moisture");
+    if (it != params.end()) dem_config.default_moisture = std::stod(it->second);
+    it = params.find("moisture_strength_factor");
+    if (it != params.end()) dem_config.moisture_strength_factor = std::stod(it->second);
+
+    dem_model_->set_config(dem_config);
+    dem_model_->set_breakage_model(breakage_model);
+
     std::cout << "[HTTP] Running DEM simulation: particles=" << particle_count
-              << ", speed=" << roller_speed << ", gap=" << roller_gap << std::endl;
+              << ", speed=" << roller_speed << ", gap=" << roller_gap
+              << ", coarse_grain=" << (dem_config.use_coarse_graining ? "on" : "off")
+              << ", spatial_grid=" << (dem_config.use_spatial_grid ? "on" : "off")
+              << ", moisture=" << dem_config.default_moisture << std::endl;
 
     auto particles = dem_model_->generate_particles(particle_count, 0.002, 0.005, 0, 0);
     auto result = dem_model_->simulate(particles, roller_speed, roller_gap, sim_time);

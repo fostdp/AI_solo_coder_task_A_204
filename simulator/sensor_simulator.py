@@ -54,21 +54,30 @@ class StoneMillSensor:
         self.wear_degree = random.uniform(20, 40)
         self.wear_rate = random.uniform(0.005, 0.015)
 
+        self.moisture_base = random.uniform(0.10, 0.15)
+        self.moisture = self.moisture_base
+
         self.yield_base = random.uniform(8, 12)
         self.running = False
         self.thread = None
 
-    def generate_size_distribution(self, speed: float, gap: float, wear: float) -> dict:
+    def generate_size_distribution(self, speed: float, gap: float, wear: float,
+                                     moisture: float = 0.12) -> dict:
         """
         基于破碎函数理论生成粒度分布
         使用Tavar破碎模型：B(x) = 1 - exp(-(x/x50)^n)
+        考虑湿度修正：高湿度降低破碎效率，细粒比例减少
         """
         wear_factor = 1 + wear / 100.0 * 0.3
         effective_speed = speed * wear_factor
         effective_gap = gap * (1 + wear / 200.0)
 
-        fine_ratio = effective_speed / 30.0
-        coarse_ratio = effective_gap / 5.0
+        moisture_ref = 0.12
+        moisture_factor = 1.0 - 0.8 * (moisture - moisture_ref) / moisture_ref
+        moisture_factor = max(0.5, min(1.5, moisture_factor))
+
+        fine_ratio = effective_speed / 30.0 * moisture_factor
+        coarse_ratio = effective_gap / 5.0 / moisture_factor
 
         dist = {}
         total = 0.0
@@ -99,11 +108,14 @@ class StoneMillSensor:
         if self.wear_degree > 95:
             self.wear_degree = 95
 
+        self.moisture = self.moisture_base + math.sin(time.time() / 3600.0) * 0.02
+        self.moisture = max(0.05, min(0.25, self.moisture))
+
         roller_speed = self.roller_speed_base * time_factor * random.uniform(0.95, 1.05)
         roller_pressure = self.roller_pressure_base * time_factor * random.uniform(0.95, 1.05)
 
         size_dist = self.generate_size_distribution(
-            roller_speed, self.roller_gap, self.wear_degree
+            roller_speed, self.roller_gap, self.wear_degree, self.moisture
         )
 
         fine_fraction = size_dist["0-1mm"] + size_dist["1-2mm"] + size_dist["2-3mm"]
@@ -127,7 +139,8 @@ class StoneMillSensor:
             "grain_size_gt5mm": round(size_dist[">5mm"], 4),
             "yield": round(yield_val, 3),
             "wear_degree": round(self.wear_degree, 2),
-            "roller_gap": round(self.roller_gap, 2)
+            "roller_gap": round(self.roller_gap, 2),
+            "moisture": round(self.moisture, 4)
         }
 
         return data

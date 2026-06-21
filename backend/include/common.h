@@ -48,7 +48,11 @@ struct DEMParticle {
     double poisson_ratio;
     double restitution;
     double strength;
+    double moisture;
+    double cohesion;
     bool broken;
+    bool is_coarse;
+    uint32_t coarse_scale;
     uint32_t id;
 };
 
@@ -61,6 +65,17 @@ struct DEMConfig {
     double mill_radius = 2.0;
     double static_friction = 0.5;
     double dynamic_friction = 0.3;
+
+    bool use_coarse_graining = false;
+    uint32_t coarse_scale = 4;
+    double coarse_radius_scale = 1.5874;
+
+    bool use_spatial_grid = true;
+    double grid_cell_size = 0.05;
+
+    double default_moisture = 0.12;
+    double moisture_strength_factor = 0.85;
+    double moisture_cohesion_base = 500.0;
 };
 
 struct DEMResult {
