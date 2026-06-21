@@ -1,21 +1,21 @@
 #pragma once
 
 #include "common.h"
-#include "mqtt_client.h"
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
 #include <chrono>
+#include <vector>
 
 namespace stone_mill {
 
 class AlertSystem {
 public:
-    AlertSystem(std::shared_ptr<MQTTClient> mqtt_client, const AlertThresholds& thresholds);
+    explicit AlertSystem(const AlertThresholds& thresholds);
     ~AlertSystem() = default;
 
-    void process_sensor_data(const SensorData& data);
+    std::vector<Alert> check_all(const SensorData& data);
 
     Alert create_alert(uint32_t mill_id, AlertType type, AlertSeverity severity,
                        const std::string& message, double current_value, double threshold);
@@ -27,17 +27,16 @@ public:
     void resolve_alert(const std::string& alert_id);
 
 private:
-    void check_wear(const SensorData& data);
-    void check_yield(const SensorData& data);
-    void check_speed(const SensorData& data);
-    void check_pressure(const SensorData& data);
+    void check_wear(const SensorData& data, std::vector<Alert>& out);
+    void check_yield(const SensorData& data, std::vector<Alert>& out);
+    void check_speed(const SensorData& data, std::vector<Alert>& out);
+    void check_pressure(const SensorData& data, std::vector<Alert>& out);
 
     bool should_suppress_alert(uint32_t mill_id, AlertType type,
                              std::chrono::system_clock::time_point now);
 
     std::string generate_alert_id();
 
-    std::shared_ptr<MQTTClient> mqtt_client_;
     AlertThresholds thresholds_;
 
     mutable std::mutex mutex_;

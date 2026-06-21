@@ -1,0 +1,56 @@
+{
+  "process": {
+    "mqtt_host": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_topic": "stone_mill/sensor/+",
+    "alert_topic": "stone_mill/alerts",
+    "clickhouse_host": "localhost",
+    "clickhouse_port": 9000,
+    "clickhouse_user": "default",
+    "clickhouse_database": "stone_mill",
+    "http_port": 8080
+  },
+  "dem": {
+    "dt": 0.0001,
+    "gravity": 9.81,
+    "damping": 0.05,
+    "roller_radius": 0.5,
+    "roller_width": 0.3,
+    "mill_radius": 1.5,
+    "static_friction": 0.6,
+    "dynamic_friction": 0.4,
+    "use_coarse_graining": true,
+    "coarse_scale": 8,
+    "coarse_radius_scale": 2.0,
+    "use_spatial_grid": true,
+    "grid_cell_size": 0.02,
+    "default_moisture": 0.15,
+    "moisture_strength_factor": 0.5,
+    "moisture_cohesion_base": 5.0
+  },
+  "breakage": {
+    "type": "tavar",
+    "selection_function_param": 0.01,
+    "breakage_distribution_param": 0.5,
+    "screening_efficiency": 0.85
+  },
+  "optimization": {
+    "min_speed": 5.0,
+    "max_speed": 30.0,
+    "min_gap": 0.5,
+    "max_gap": 5.0,
+    "population_size": 30,
+    "max_generations": 20,
+    "mutation_rate": 0.15,
+    "crossover_rate": 0.7
+  },
+  "thresholds": {
+    "wear_warning": 0.5,
+    "wear_critical": 0.75,
+    "low_yield": 5.0,
+    "min_speed": 3.0,
+    "max_speed": 40.0,
+    "min_pressure": 100.0,
+    "max_pressure": 1500.0
+  }
+}

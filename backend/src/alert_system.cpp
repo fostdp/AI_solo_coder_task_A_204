@@ -2,11 +2,12 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 namespace stone_mill {
 
-AlertSystem::AlertSystem(std::shared_ptr<MQTTClient> mqtt_client, const AlertThresholds& thresholds)
-    : mqtt_client_(std::move(mqtt_client)), thresholds_(thresholds) {}
+AlertSystem::AlertSystem(const AlertThresholds& thresholds)
+    : thresholds_(thresholds) {}
 
 void AlertSystem::set_thresholds(const AlertThresholds& thresholds) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -60,10 +61,6 @@ Alert AlertSystem::create_alert(uint32_t mill_id, AlertType type, AlertSeverity 
     std::lock_guard<std::mutex> lock(mutex_);
     active_alerts_[alert.alert_id] = alert;
 
-    if (mqtt_client_) {
-        mqtt_client_->publish_alert(alert);
-    }
-
     std::cout << "[ALERT] " << to_string(type) << " (" << to_string(severity)
               << ") for mill " << mill_id << ": " << message
               << " (current=" << current_value << ", threshold=" << threshold << ")"
@@ -72,7 +69,7 @@ Alert AlertSystem::create_alert(uint32_t mill_id, AlertType type, AlertSeverity 
     return alert;
 }
 
-void AlertSystem::check_wear(const SensorData& data) {
+void AlertSystem::check_wear(const SensorData& data, std::vector<Alert>& out) {
     auto now = std::chrono::system_clock::now();
 
     if (data.wear_degree >= thresholds_.wear_critical) {
@@ -80,21 +77,21 @@ void AlertSystem::check_wear(const SensorData& data) {
             std::stringstream ss;
             ss << "碾轮磨损严重，需要立即更换，磨损度: " << std::fixed << std::setprecision(1)
                << data.wear_degree << "%";
-            create_alert(data.mill_id, AlertType::WEAR, AlertSeverity::CRITICAL,
-                        ss.str(), data.wear_degree, thresholds_.wear_critical);
+            out.push_back(create_alert(data.mill_id, AlertType::WEAR, AlertSeverity::CRITICAL,
+                        ss.str(), data.wear_degree, thresholds_.wear_critical));
         }
     } else if (data.wear_degree >= thresholds_.wear_warning) {
         if (!should_suppress_alert(data.mill_id, AlertType::WEAR, now)) {
             std::stringstream ss;
             ss << "碾轮磨损度较高，建议检查，磨损度: " << std::fixed << std::setprecision(1)
                << data.wear_degree << "%";
-            create_alert(data.mill_id, AlertType::WEAR, AlertSeverity::WARNING,
-                        ss.str(), data.wear_degree, thresholds_.wear_warning);
+            out.push_back(create_alert(data.mill_id, AlertType::WEAR, AlertSeverity::WARNING,
+                        ss.str(), data.wear_degree, thresholds_.wear_warning));
         }
     }
 }
 
-void AlertSystem::check_yield(const SensorData& data) {
+void AlertSystem::check_yield(const SensorData& data, std::vector<Alert>& out) {
     auto now = std::chrono::system_clock::now();
 
     if (data.yield < thresholds_.low_yield) {
@@ -102,13 +99,13 @@ void AlertSystem::check_yield(const SensorData& data) {
             std::stringstream ss;
             ss << "产量过低: " << std::fixed << std::setprecision(2)
                << data.yield << " kg/min";
-            create_alert(data.mill_id, AlertType::LOW_YIELD, AlertSeverity::WARNING,
-                        ss.str(), data.yield, thresholds_.low_yield);
+            out.push_back(create_alert(data.mill_id, AlertType::LOW_YIELD, AlertSeverity::WARNING,
+                        ss.str(), data.yield, thresholds_.low_yield));
         }
     }
 }
 
-void AlertSystem::check_speed(const SensorData& data) {
+void AlertSystem::check_speed(const SensorData& data, std::vector<Alert>& out) {
     auto now = std::chrono::system_clock::now();
 
     if (data.roller_speed < thresholds_.min_speed || data.roller_speed > thresholds_.max_speed) {
@@ -125,13 +122,13 @@ void AlertSystem::check_speed(const SensorData& data) {
             std::stringstream ss;
             ss << "碾轮转速" << direction << ": " << std::fixed << std::setprecision(2)
                << data.roller_speed << " rad/s";
-            create_alert(data.mill_id, AlertType::ABNORMAL_SPEED, severity,
-                        ss.str(), data.roller_speed, threshold);
+            out.push_back(create_alert(data.mill_id, AlertType::ABNORMAL_SPEED, severity,
+                        ss.str(), data.roller_speed, threshold));
         }
     }
 }
 
-void AlertSystem::check_pressure(const SensorData& data) {
+void AlertSystem::check_pressure(const SensorData& data, std::vector<Alert>& out) {
     auto now = std::chrono::system_clock::now();
 
     if (data.roller_pressure < thresholds_.min_pressure ||
@@ -149,23 +146,26 @@ void AlertSystem::check_pressure(const SensorData& data) {
             std::stringstream ss;
             ss << "碾轮压力" << direction << ": " << std::fixed << std::setprecision(2)
                << data.roller_pressure << " N";
-            create_alert(data.mill_id, AlertType::ABNORMAL_PRESSURE, severity,
-                        ss.str(), data.roller_pressure, threshold);
+            out.push_back(create_alert(data.mill_id, AlertType::ABNORMAL_PRESSURE, severity,
+                        ss.str(), data.roller_pressure, threshold));
         }
     }
 }
 
-void AlertSystem::process_sensor_data(const SensorData& data) {
-    check_wear(data);
-    check_yield(data);
-    check_speed(data);
-    check_pressure(data);
+std::vector<Alert> AlertSystem::check_all(const SensorData& data) {
+    std::vector<Alert> out;
+    check_wear(data, out);
+    check_yield(data, out);
+    check_speed(data, out);
+    check_pressure(data, out);
+    return out;
 }
 
 std::vector<Alert> AlertSystem::get_active_alerts(uint32_t mill_id) const {
     std::vector<Alert> results;
     std::lock_guard<std::mutex> lock(mutex_);
-    for (const auto& [id, alert] : active_alerts_) {
+    for (const auto& entry : active_alerts_) {
+        const auto& alert = entry.second;
         if (!alert.resolved && (mill_id == 0 || alert.mill_id == mill_id)) {
             results.push_back(alert);
         }

@@ -8,6 +8,12 @@ namespace stone_mill {
 
 GeneticOptimizer::GeneticOptimizer() = default;
 
+GeneticOptimizer::GeneticOptimizer(const OptimizationParams& params, const BreakageModel& model) {
+    params_ = params;
+    breakage_model_ = model;
+    dem_model_ = std::make_shared<DEMModel>();
+}
+
 void GeneticOptimizer::set_dem_model(std::shared_ptr<DEMModel> model) {
     dem_model_ = std::move(model);
 }
@@ -243,6 +249,14 @@ OptimizationResult GeneticOptimizer::optimize(const std::vector<DEMParticle>& in
               << " at generation " << best_generation << std::endl;
 
     return extract_result(best_individual, best_generation + 1);
+}
+
+OptimizationResult GeneticOptimizer::optimize(size_t target_bin_min, size_t target_bin_max) {
+    if (!dem_model_) {
+        dem_model_ = std::make_shared<DEMModel>();
+    }
+    std::vector<DEMParticle> empty;
+    return optimize(empty, target_bin_min, target_bin_max);
 }
 
 }

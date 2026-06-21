@@ -12,6 +12,7 @@ namespace stone_mill {
 class DEMModel {
 public:
     DEMModel();
+    DEMModel(const DEMConfig& config, const BreakageModel& model);
     ~DEMModel() = default;
 
     void set_config(const DEMConfig& config);
@@ -20,9 +21,13 @@ public:
     std::vector<DEMParticle> generate_particles(size_t count, double min_radius, double max_radius,
                                          double mill_center_x, double mill_center_y);
 
+    std::vector<DEMParticle> generate_particles(size_t count, double roller_gap);
+
     DEMResult simulate(const std::vector<DEMParticle>& initial_particles,
                    double roller_speed, double roller_gap,
                    double total_simulation_time);
+
+    DEMResult simulate(double total_simulation_time, double roller_speed, double roller_gap);
 
     GrainSizeDistribution compute_size_distribution(const std::vector<DEMParticle>& particles);
 

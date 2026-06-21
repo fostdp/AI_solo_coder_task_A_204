@@ -7,13 +7,19 @@
 #include <optional>
 #include <mutex>
 #include <atomic>
+#include <cstring>
 
 namespace stone_mill {
 
 constexpr size_t GRAIN_SIZE_BINS = 6;
+constexpr size_t SIZE_BINS = GRAIN_SIZE_BINS;
+constexpr size_t OPT_PARAM_STR_LEN = 64;
 
 struct GrainSizeDistribution {
-    std::array<double, GRAIN_SIZE_BINS> bins{0};
+    std::array<double, GRAIN_SIZE_BINS> bins;
+    GrainSizeDistribution() {
+        for (auto& v : bins) v = 0.0;
+    }
     double& operator[](size_t i) { return bins[i]; }
     double operator[](size_t i) const { return bins[i]; }
     double sum() const {
@@ -57,25 +63,25 @@ struct DEMParticle {
 };
 
 struct DEMConfig {
-    double dt = 1e-5;
-    double gravity = 9.81;
-    double damping = 0.99;
-    double roller_radius = 0.8;
-    double roller_width = 0.3;
-    double mill_radius = 2.0;
-    double static_friction = 0.5;
-    double dynamic_friction = 0.3;
+    double dt;
+    double gravity;
+    double damping;
+    double roller_radius;
+    double roller_width;
+    double mill_radius;
+    double static_friction;
+    double dynamic_friction;
 
-    bool use_coarse_graining = false;
-    uint32_t coarse_scale = 4;
-    double coarse_radius_scale = 1.5874;
+    bool use_coarse_graining;
+    uint32_t coarse_scale;
+    double coarse_radius_scale;
 
-    bool use_spatial_grid = true;
-    double grid_cell_size = 0.05;
+    bool use_spatial_grid;
+    double grid_cell_size;
 
-    double default_moisture = 0.12;
-    double moisture_strength_factor = 0.85;
-    double moisture_cohesion_base = 500.0;
+    double default_moisture;
+    double moisture_strength_factor;
+    double moisture_cohesion_base;
 };
 
 struct DEMResult {
@@ -90,15 +96,15 @@ struct DEMResult {
 
 struct OptimizationParams {
     uint32_t mill_id;
-    std::string target_size_range;
-    double min_speed = 5.0;
-    double max_speed = 30.0;
-    double min_gap = 0.5;
-    double max_gap = 5.0;
-    uint32_t population_size = 50;
-    uint32_t max_generations = 100;
-    double mutation_rate = 0.1;
-    double crossover_rate = 0.8;
+    char target_size_range[OPT_PARAM_STR_LEN];
+    double min_speed;
+    double max_speed;
+    double min_gap;
+    double max_gap;
+    uint32_t population_size;
+    uint32_t max_generations;
+    double mutation_rate;
+    double crossover_rate;
 };
 
 struct OptimizationResult {
@@ -137,26 +143,26 @@ struct Alert {
 };
 
 struct AlertThresholds {
-    double wear_warning = 70.0;
-    double wear_critical = 90.0;
-    double low_yield = 5.0;
-    double min_speed = 3.0;
-    double max_speed = 35.0;
-    double min_pressure = 100.0;
-    double max_pressure = 1000.0;
+    double wear_warning;
+    double wear_critical;
+    double low_yield;
+    double min_speed;
+    double max_speed;
+    double min_pressure;
+    double max_pressure;
 };
 
 struct ProcessConfig {
-    std::string mqtt_host = "localhost";
-    int mqtt_port = 1883;
-    std::string mqtt_topic = "stone_mill/sensor/+";
-    std::string alert_topic = "stone_mill/alerts";
-    std::string clickhouse_host = "localhost";
-    int clickhouse_port = 8123;
-    std::string clickhouse_user = "default";
-    std::string clickhouse_password = "";
-    std::string clickhouse_database = "stone_mill";
-    int http_port = 8080;
+    std::string mqtt_host;
+    int mqtt_port;
+    std::string mqtt_topic;
+    std::string alert_topic;
+    std::string clickhouse_host;
+    int clickhouse_port;
+    std::string clickhouse_user;
+    std::string clickhouse_password;
+    std::string clickhouse_database;
+    int http_port;
     AlertThresholds thresholds;
 };
 
@@ -167,15 +173,21 @@ enum class BreakageFunctionType {
 };
 
 struct BreakageModel {
-    BreakageFunctionType type = BreakageFunctionType::TAVAR;
-    double selection_function_param = 0.5;
-    double breakage_distribution_param = 0.7;
-    double screening_efficiency = 0.85;
+    BreakageFunctionType type;
+    double selection_function_param;
+    double breakage_distribution_param;
+    double screening_efficiency;
 };
 
 std::string to_string(AlertType type);
 std::string to_string(AlertSeverity severity);
 AlertType alert_type_from_string(const std::string& s);
 AlertSeverity alert_severity_from_string(const std::string& s);
+
+ProcessConfig default_process_config();
+DEMConfig default_dem_config();
+BreakageModel default_breakage_model();
+OptimizationParams default_optimization_params();
+AlertThresholds default_alert_thresholds();
 
 }

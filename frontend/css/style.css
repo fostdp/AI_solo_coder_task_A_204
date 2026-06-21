@@ -708,6 +708,65 @@ body {
     gap: 0.8rem;
 }
 
+.particle-panel {
+    background: rgba(15, 20, 35, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    color: #ecf0f1;
+    font-size: 0.85rem;
+}
+.particle-panel h3 {
+    margin: 0 0 0.8rem;
+    font-size: 0.95rem;
+    color: #f39c12;
+}
+.particle-panel .control-row {
+    margin-bottom: 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.particle-panel .control-row.checks,
+.particle-panel .control-row.buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+.particle-panel label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.particle-panel input[type="range"] {
+    flex: 1;
+    accent-color: #f39c12;
+}
+.particle-panel button {
+    background: linear-gradient(135deg, #f39c12, #e67e22);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.45rem 1rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: transform 0.15s ease;
+}
+.particle-panel button:hover {
+    transform: translateY(-1px);
+}
+.particle-panel .particle-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.8rem;
+    color: #95a5a6;
+}
+
 .toast {
     padding: 1rem 1.5rem;
     border-radius: 8px;

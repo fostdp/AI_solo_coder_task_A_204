@@ -1,3 +1,89 @@
+class StoneMill3DAdapter {
+    constructor(containerId) {
+        this.roller3d = new StoneRoller3D(containerId);
+        this.particles = null;
+        this._speed = 0;
+        this._gap = 2.0;
+        this._showParticles = true;
+        this._showForces = false;
+        this._particleCount = 200;
+    }
+    initParticles() {
+        if (this.particles) return;
+        this.particles = new ParticlePanel(this.roller3d, null);
+        this.setRollerSpeed(this._speed);
+        this.setRollerGap(this._gap);
+        this.showParticles(this._showParticles);
+        this.showForceArrows(this._showForces);
+    }
+    setRollerSpeed(speed) {
+        this._speed = speed;
+        if (this.roller3d) this.roller3d.setRollerSpeed(speed);
+        if (this.particles) this.particles.rollerSpeed = speed;
+    }
+    setRollerGap(gap) {
+        this._gap = gap;
+        if (this.particles) this.particles.rollerGap = gap;
+    }
+    showParticles(show) {
+        this._showParticles = show;
+        if (this.particles) {
+            this.particles.showParticles = show;
+            if (this.particles.grainInstanced) this.particles.grainInstanced.visible = show;
+        }
+    }
+    showForceArrows(show) {
+        this._showForces = show;
+        if (this.particles) {
+            this.particles.showForces = show;
+            for (const a of this.particles.forceArrows) a.visible = show;
+        }
+    }
+    resetParticles(count) {
+        this._particleCount = count;
+        if (this.particles) this.particles.createGrainParticles(count);
+    }
+    resetCamera() {
+        if (this.roller3d && this.roller3d.camera) {
+            this.roller3d.camera.position.set(4, 3, 4);
+            this.roller3d.camera.lookAt(0, 0, 0);
+        }
+    }
+    resize() {
+        if (this.roller3d) this.roller3d.onResize();
+    }
+    getStats() {
+        const active = this.particles ? this.particles.particleData.filter(p => !p.broken).length : 0;
+        const total = this.particles ? this.particles.particleData.length : 0;
+        const broken = total - active;
+        return {
+            particleCount: active,
+            breakageRatio: total > 0 ? broken / total : 0,
+            avgForce: 0,
+            maxForce: 0,
+            simTime: performance.now() / 1000
+        };
+    }
+    getSizeDistribution() {
+        const bins = [0.3, 0.28, 0.2, 0.12, 0.07, 0.03];
+        if (this.particles) {
+            const active = this.particles.particleData.filter(p => !p.broken);
+            for (let i = 0; i < bins.length; i++) bins[i] = 0;
+            for (const p of active) {
+                if (p.radius > 0.05) bins[0]++;
+                else if (p.radius > 0.04) bins[1]++;
+                else if (p.radius > 0.032) bins[2]++;
+                else if (p.radius > 0.026) bins[3]++;
+                else if (p.radius > 0.022) bins[4]++;
+                else bins[5]++;
+            }
+            const s = bins.reduce((a, b) => a + b, 0);
+            if (s > 0) for (let i = 0; i < bins.length; i++) bins[i] /= s;
+        }
+        return bins;
+    }
+}
+
 class StoneMillApp {
     constructor() {
         this.currentMillId = 1;
@@ -310,7 +396,8 @@ class StoneMillApp {
         const container = document.getElementById('three-container');
         if (container && typeof THREE !== 'undefined') {
             setTimeout(() => {
-                this.mill3D = new StoneMill3D('three-container');
+                this.mill3D = new StoneMill3DAdapter('three-container');
+                this.mill3D.initParticles();
                 this.mill3D.setRollerSpeed(15);
                 this.mill3D.setRollerGap(2.0);
                 this.start3DInfoUpdate();

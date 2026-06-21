@@ -24,6 +24,7 @@ public:
     };
 
     GeneticOptimizer();
+    GeneticOptimizer(const OptimizationParams& params, const BreakageModel& model);
     ~GeneticOptimizer() = default;
 
     void set_dem_model(std::shared_ptr<DEMModel> model);
@@ -32,6 +33,8 @@ public:
 
     OptimizationResult optimize(const std::vector<DEMParticle>& initial_particles,
                                 size_t target_bin_min, size_t target_bin_max);
+
+    OptimizationResult optimize(size_t target_bin_min, size_t target_bin_max);
 
     void set_fitness_callback(std::function<double(const Individual&)> callback);
 

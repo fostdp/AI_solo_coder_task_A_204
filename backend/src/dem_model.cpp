@@ -705,4 +705,21 @@ void DEMModel::handle_breakage(std::vector<DEMParticle>& particles, std::mt19937
     particles.insert(particles.end(), new_particles.begin(), new_particles.end());
 }
 
+DEMModel::DEMModel(const DEMConfig& config, const BreakageModel& model) {
+    next_particle_id_ = 0;
+    config_ = config;
+    breakage_model_ = model;
+}
+
+std::vector<DEMParticle> DEMModel::generate_particles(size_t count, double roller_gap) {
+    double min_r = std::max(0.002, roller_gap * 0.08);
+    double max_r = std::max(min_r * 1.8, roller_gap * 0.25);
+    return generate_particles(count, min_r, max_r, 0.0, 0.0);
+}
+
+DEMResult DEMModel::simulate(double total_simulation_time, double roller_speed, double roller_gap) {
+    std::vector<DEMParticle> empty;
+    return simulate(empty, roller_speed, roller_gap, total_simulation_time);
+}
+
 }
