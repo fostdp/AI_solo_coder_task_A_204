@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>古代石碾粉碎过程离散元仿真与粒度优化系统</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>古代石碾粉碎过程离散元仿真与粒度优化系统</h1>
+            <div class="header-info">
+                <span id="connection-status" class="status-badge connected">● 已连接</span>
+                <span id="current-time" class="current-time">--:--:--</span>
+            </div>
+        </header>
+
+        <nav class="app-nav">
+            <button class="nav-btn active" data-view="dashboard">数据概览</button>
+            <button class="nav-btn" data-view="simulation">3D仿真</button>
+            <button class="nav-btn" data-view="optimization">粒度优化</button>
+            <button class="nav-btn" data-view="alerts">告警中心</button>
+            <button class="nav-btn" data-view="settings">系统设置</button>
+        </nav>
+
+        <main class="app-main">
+            <section id="view-dashboard" class="view active">
+                <div class="dashboard-grid">
+                    <div class="card mill-selector">
+                        <h3>石碾选择</h3>
+                        <select id="mill-select">
+                            <option value="1">石碾 #1 - 主碾</option>
+                            <option value="2">石碾 #2 - 副碾</option>
+                            <option value="3">石碾 #3 - 备用碾</option>
+                        </select>
+                    </div>
+
+                    <div class="card metric-card">
+                        <div class="metric-icon speed">⚙</div>
+                        <div class="metric-info">
+                            <div class="metric-label">碾轮转速</div>
+                            <div class="metric-value"><span id="metric-speed">--</span> <small>rad/s</small></div>
+                        </div>
+                    </div>
+
+                    <div class="card metric-card">
+                        <div class="metric-icon pressure">⏛</div>
+                        <div class="metric-info">
+                            <div class="metric-label">碾轮压力</div>
+                            <div class="metric-value"><span id="metric-pressure">--</span> <small>N</small></div>
+                        </div>
+                    </div>
+
+                    <div class="card metric-card">
+                        <div class="metric-icon yield">🌾</div>
+                        <div class="metric-info">
+                            <div class="metric-label">实时产量</div>
+                            <div class="metric-value"><span id="metric-yield">--</span> <small>kg/min</small></div>
+                        </div>
+                    </div>
+
+                    <div class="card metric-card">
+                        <div class="metric-icon wear">⚠</div>
+                        <div class="metric-info">
+                            <div class="metric-label">磨损程度</div>
+                            <div class="metric-value"><span id="metric-wear">--</span> <small>%</small></div>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card wide">
+                        <h3>粒度分布</h3>
+                        <canvas id="grain-size-chart"></canvas>
+                        <div class="chart-legend">
+                            <span><span class="legend-color" style="background:#e74c3c"></span> 0-1mm</span>
+                            <span><span class="legend-color" style="background:#e67e22"></span> 1-2mm</span>
+                            <span><span class="legend-color" style="background:#f1c40f"></span> 2-3mm</span>
+                            <span><span class="legend-color" style="background:#2ecc71"></span> 3-4mm</span>
+                            <span><span class="legend-color" style="background:#3498db"></span> 4-5mm</span>
+                            <span><span class="legend-color" style="background:#9b59b6"></span> >5mm</span>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>产量趋势 (最近1小时)</h3>
+                        <canvas id="yield-trend-chart"></canvas>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>磨损趋势</h3>
+                        <canvas id="wear-trend-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-simulation" class="view">
+                <div class="simulation-container">
+                    <div class="card simulation-controls">
+                        <h3>离散元仿真控制</h3>
+                        <div class="control-group">
+                            <label>粒子数量: <span id="particle-count-value">200</span></label>
+                            <input type="range" id="particle-count" min="50" max="1000" value="200" step="50">
+                        </div>
+                        <div class="control-group">
+                            <label>碾轮转速: <span id="sim-speed-value">15</span> rad/s</label>
+                            <input type="range" id="sim-speed" min="5" max="30" value="15" step="0.5">
+                        </div>
+                        <div class="control-group">
+                            <label>碾轮间隙: <span id="sim-gap-value">2.0</span> mm</label>
+                            <input type="range" id="sim-gap" min="0.5" max="5" value="2" step="0.1">
+                        </div>
+                        <div class="control-group">
+                            <label>仿真时长: <span id="sim-time-value">0.1</span> s</label>
+                            <input type="range" id="sim-time" min="0.05" max="0.5" value="0.1" step="0.05">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                <input type="checkbox" id="show-particles" checked>
+                                显示谷物粒子
+                            </label>
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                <input type="checkbox" id="show-forces">
+                                显示受力箭头
+                            </label>
+                        </div>
+                        <div class="button-group">
+                            <button id="btn-start-sim" class="btn btn-primary">开始仿真</button>
+                            <button id="btn-reset-view" class="btn">重置视角</button>
+                        </div>
+                    </div>
+
+                    <div class="card simulation-canvas-container">
+                        <div id="three-container"></div>
+                        <div class="simulation-info">
+                            <div class="info-item">
+                                <span class="info-label">粒子总数:</span>
+                                <span id="info-particles">0</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">破碎率:</span>
+                                <span id="info-breakage">0%</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">平均受力:</span>
+                                <span id="info-avg-force">0 N</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">最大受力:</span>
+                                <span id="info-max-force">0 N</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">仿真时间:</span>
+                                <span id="info-sim-time">0 s</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card simulation-result">
+                        <h3>仿真结果 - 粒度分布</h3>
+                        <canvas id="sim-grain-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-optimization" class="view">
+                <div class="optimization-container">
+                    <div class="card optimization-controls">
+                        <h3>粒度优化参数</h3>
+                        <div class="control-group">
+                            <label>目标粒度区间:</label>
+                            <div class="range-selector">
+                                <select id="opt-bin-min">
+                                    <option value="0">0-1mm</option>
+                                    <option value="1" selected>1-2mm</option>
+                                    <option value="2">2-3mm</option>
+                                    <option value="3">3-4mm</option>
+                                    <option value="4">4-5mm</option>
+                                    <option value="5">>5mm</option>
+                                </select>
+                                <span class="range-separator">至</span>
+                                <select id="opt-bin-max">
+                                    <option value="0">0-1mm</option>
+                                    <option value="1">1-2mm</option>
+                                    <option value="2" selected>2-3mm</option>
+                                    <option value="3">3-4mm</option>
+                                    <option value="4">4-5mm</option>
+                                    <option value="5">>5mm</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <label>种群数量: <span id="opt-pop-value">50</span></label>
+                            <input type="range" id="opt-pop" min="20" max="200" value="50" step="10">
+                        </div>
+                        <div class="control-group">
+                            <label>最大迭代: <span id="opt-gen-value">100</span></label>
+                            <input type="range" id="opt-gen" min="20" max="500" value="100" step="10">
+                        </div>
+                        <div class="control-group">
+                            <label>变异率: <span id="opt-mut-value">0.10</span></label>
+                            <input type="range" id="opt-mut" min="0.01" max="0.5" value="0.1" step="0.01">
+                        </div>
+                        <div class="control-group">
+                            <label>交叉率: <span id="opt-cross-value">0.80</span></label>
+                            <input type="range" id="opt-cross" min="0.5" max="0.99" value="0.8" step="0.01">
+                        </div>
+                        <div class="control-group">
+                            <label>筛分效率: <span id="opt-screen-value">0.85</span></label>
+                            <input type="range" id="opt-screen" min="0.5" max="1.0" value="0.85" step="0.01">
+                        </div>
+                        <div class="control-group">
+                            <label>破碎函数参数: <span id="opt-break-value">0.50</span></label>
+                            <input type="range" id="opt-break" min="0.1" max="1.0" value="0.5" step="0.05">
+                        </div>
+                        <div class="button-group">
+                            <button id="btn-start-opt" class="btn btn-primary">开始优化</button>
+                            <button id="btn-cancel-opt" class="btn btn-danger" disabled>停止优化</button>
+                        </div>
+                    </div>
+
+                    <div class="card optimization-progress">
+                        <h3>优化进度</h3>
+                        <div class="progress-container">
+                            <div class="progress-bar" id="opt-progress-bar">
+                                <div class="progress-fill" id="opt-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="opt-progress-text">0 / 100</div>
+                        </div>
+                        <div class="optimization-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">当前适应度</div>
+                                <div class="stat-value" id="stat-fitness">--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">最佳转速</div>
+                                <div class="stat-value" id="stat-speed">-- rad/s</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">最佳间隙</div>
+                                <div class="stat-value" id="stat-gap">-- mm</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">目标产率</div>
+                                <div class="stat-value" id="stat-ratio">-- %</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">预测产量</div>
+                                <div class="stat-value" id="stat-yield">-- kg/min</div>
+                            </div>
+                        </div>
+                        <h4>适应度进化曲线</h4>
+                        <canvas id="fitness-chart"></canvas>
+                    </div>
+
+                    <div class="card optimization-result wide">
+                        <h3>优化结果</h3>
+                        <div id="opt-result-empty" class="empty-state">
+                            <p>点击"开始优化"按钮运行遗传算法优化</p>
+                        </div>
+                        <div id="opt-result-content" class="result-content" style="display:none;">
+                            <div class="result-summary">
+                                <div class="result-card highlight">
+                                    <div class="result-label">最佳碾轮转速</div>
+                                    <div class="result-value" id="res-speed">--</div>
+                                    <div class="result-unit">rad/s</div>
+                                </div>
+                                <div class="result-card highlight">
+                                    <div class="result-label">最佳碾轮间隙</div>
+                                    <div class="result-value" id="res-gap">--</div>
+                                    <div class="result-unit">mm</div>
+                                </div>
+                                <div class="result-card">
+                                    <div class="result-label">目标粒度产率</div>
+                                    <div class="result-value" id="res-ratio">--</div>
+                                    <div class="result-unit">%</div>
+                                </div>
+                                <div class="result-card">
+                                    <div class="result-label">预测产量</div>
+                                    <div class="result-value" id="res-yield">--</div>
+                                    <div class="result-unit">kg/min</div>
+                                </div>
+                                <div class="result-card">
+                                    <div class="result-label">适应度值</div>
+                                    <div class="result-value" id="res-fitness">--</div>
+                                </div>
+                                <div class="result-card">
+                                    <div class="result-label">迭代次数</div>
+                                    <div class="result-value" id="res-generations">--</div>
+                                </div>
+                            </div>
+                            <div class="result-params">
+                                <h4>优化参数</h4>
+                                <pre id="res-params"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-alerts" class="view">
+                <div class="alerts-container">
+                    <div class="card alerts-header">
+                        <h3>告警中心</h3>
+                        <div class="alerts-filters">
+                            <select id="alert-filter-type">
+                                <option value="all">全部类型</option>
+                                <option value="wear">碾轮磨损</option>
+                                <option value="low_yield">产量过低</option>
+                                <option value="abnormal_speed">转速异常</option>
+                                <option value="abnormal_pressure">压力异常</option>
+                            </select>
+                            <select id="alert-filter-severity">
+                                <option value="all">全部级别</option>
+                                <option value="critical">严重</option>
+                                <option value="warning">警告</option>
+                                <option value="info">信息</option>
+                            </select>
+                            <select id="alert-filter-mill">
+                                <option value="0">全部石碾</option>
+                                <option value="1">石碾 #1</option>
+                                <option value="2">石碾 #2</option>
+                                <option value="3">石碾 #3</option>
+                            </select>
+                            <label>
+                                <input type="checkbox" id="alert-only-unresolved" checked>
+                                仅显示未处理
+                            </label>
+                        </div>
+                    </div>
+                    <div class="card alerts-list" id="alerts-list">
+                        <div class="empty-state">
+                            <p>暂无告警</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-settings" class="view">
+                <div class="settings-container">
+                    <div class="card settings-card">
+                        <h3>告警阈值设置</h3>
+                        <div class="control-group">
+                            <label>磨损警告阈值: <span id="th-wear-warning-value">70</span>%</label>
+                            <input type="range" id="th-wear-warning" min="50" max="85" value="70" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>磨损严重阈值: <span id="th-wear-critical-value">90</span>%</label>
+                            <input type="range" id="th-wear-critical" min="70" max="100" value="90" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>低产量阈值: <span id="th-yield-value">5.0</span> kg/min</label>
+                            <input type="range" id="th-yield" min="1" max="15" value="5" step="0.5">
+                        </div>
+                        <div class="control-group">
+                            <label>最小转速阈值: <span id="th-speed-min-value">3.0</span> rad/s</label>
+                            <input type="range" id="th-speed-min" min="1" max="10" value="3" step="0.5">
+                        </div>
+                        <div class="control-group">
+                            <label>最大转速阈值: <span id="th-speed-max-value">35.0</span> rad/s</label>
+                            <input type="range" id="th-speed-max" min="20" max="50" value="35" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label>最小压力阈值: <span id="th-pressure-min-value">100</span> N</label>
+                            <input type="range" id="th-pressure-min" min="50" max="300" value="100" step="10">
+                        </div>
+                        <div class="control-group">
+                            <label>最大压力阈值: <span id="th-pressure-max-value">1000</span> N</label>
+                            <input type="range" id="th-pressure-max" min="500" max="2000" value="1000" step="50">
+                        </div>
+                        <div class="button-group">
+                            <button id="btn-save-thresholds" class="btn btn-primary">保存设置</button>
+                            <button id="btn-load-thresholds" class="btn">读取当前设置</button>
+                        </div>
+                    </div>
+                    <div class="card settings-card">
+                        <h3>API 服务配置</h3>
+                        <div class="control-group">
+                            <label>后端服务地址</label>
+                            <input type="text" id="api-host" value="http://localhost:8080">
+                        </div>
+                        <div class="control-group">
+                            <label>
+                                <input type="checkbox" id="auto-refresh" checked>
+                                自动刷新数据
+                            </label>
+                        </div>
+                        <div class="control-group">
+                            <label>刷新间隔: <span id="refresh-interval-value">5</span> 秒</label>
+                            <input type="range" id="refresh-interval" min="1" max="30" value="5" step="1">
+                        </div>
+                        <div class="button-group">
+                            <button id="btn-test-connection" class="btn">测试连接</button>
+                        </div>
+                        <div id="connection-test-result"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div class="toast-container" id="toast-container"></div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/mill3d.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
