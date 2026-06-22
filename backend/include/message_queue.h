@@ -19,7 +19,7 @@ template <typename T>
 class MessageQueue {
 public:
     explicit MessageQueue(size_t capacity = 65536)
-        : capacity_(capacity), dropped_(0) {
+        : capacity_(capacity), dropped_(0), size_(0) {
         (void)capacity_;
     }
 
@@ -30,6 +30,7 @@ public:
             return false;
         }
         q_.push(msg);
+        size_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
 
@@ -38,6 +39,7 @@ public:
         if (q_.empty()) return std::nullopt;
         T v = q_.front();
         q_.pop();
+        size_.fetch_sub(1, std::memory_order_relaxed);
         return v;
     }
 
@@ -51,14 +53,17 @@ public:
             q_.pop();
             ++count;
         }
+        if (count) size_.fetch_sub(count, std::memory_order_relaxed);
         return count;
     }
 
     uint64_t dropped() const { return dropped_.load(std::memory_order_relaxed); }
+    size_t approx_size() const { return size_.load(std::memory_order_relaxed); }
 
 private:
     size_t capacity_;
     std::atomic<uint64_t> dropped_;
+    std::atomic<size_t> size_;
     mutable std::mutex mtx_;
     std::queue<T> q_;
 };
@@ -73,7 +78,7 @@ template <typename T>
 class MessageQueue {
 public:
     explicit MessageQueue(size_t capacity = 65536)
-        : queue_(capacity), dropped_(0) {
+        : queue_(capacity), dropped_(0), size_(0) {
         static_assert(std::is_trivially_copyable<T>::value,
             "MessageQueue<T> requires T to be trivially copyable");
         static_assert(std::is_trivially_default_constructible<T>::value,
@@ -81,14 +86,20 @@ public:
     }
 
     bool push(const T& msg) {
-        if (queue_.push(msg)) return true;
+        if (queue_.push(msg)) {
+            size_.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
         dropped_.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
 
     std::optional<T> pop() {
         T msg{};
-        if (queue_.pop(msg)) return msg;
+        if (queue_.pop(msg)) {
+            size_.fetch_sub(1, std::memory_order_relaxed);
+            return msg;
+        }
         return std::nullopt;
     }
 
@@ -101,14 +112,17 @@ public:
             out.push_back(msg);
             ++count;
         }
+        if (count) size_.fetch_sub(count, std::memory_order_relaxed);
         return count;
     }
 
     uint64_t dropped() const { return dropped_.load(std::memory_order_relaxed); }
+    size_t approx_size() const { return size_.load(std::memory_order_relaxed); }
 
 private:
     boost::lockfree::queue<T> queue_;
     std::atomic<uint64_t> dropped_;
+    std::atomic<size_t> size_;
 };
 
 }

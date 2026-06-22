@@ -1,4 +1,6 @@
 #include "modules/size_optimizer.h"
+#include "logger.h"
+#include "metrics.h"
 #include <chrono>
 #include <iostream>
 #include <cstring>
@@ -18,13 +20,14 @@ SizeOptimizer::~SizeOptimizer() { stop(); }
 void SizeOptimizer::start() {
     running_.store(true);
     thread_ = std::thread(&SizeOptimizer::worker, this);
-    std::cout << "[SizeOptimizer] started" << std::endl;
+    LOG_INFO("SizeOptimizer started (pop={}, gens={})",
+             opt_cfg_.population_size, opt_cfg_.max_generations);
 }
 
 void SizeOptimizer::stop() {
     if (running_.exchange(false)) {
         if (thread_.joinable()) thread_.join();
-        std::cout << "[SizeOptimizer] stopped" << std::endl;
+        LOG_INFO("SizeOptimizer stopped");
     }
 }
 
@@ -49,6 +52,7 @@ void SizeOptimizer::worker() {
         resp.request_id = req->request_id;
         resp.mill_id = req->mill_id;
         resp.success = 0;
+        auto t0 = std::chrono::steady_clock::now();
         try {
             OptimizationResult r = run_optimization(*req);
             resp.success = 1;
@@ -58,13 +62,27 @@ void SizeOptimizer::worker() {
             resp.predicted_target_ratio = r.predicted_target_ratio;
             resp.fitness = r.fitness;
             resp.generations = r.generations;
+
+            auto t1 = std::chrono::steady_clock::now();
+            double elapsed = std::chrono::duration<double>(t1 - t0).count();
+            LOG_INFO("SizeOptimizer req_id={} success speed={:.2f} gap={:.3f} fit={:.3f} gens={} {:.1f}ms",
+                     req->request_id, resp.best_speed, resp.best_gap, resp.fitness,
+                     resp.generations, elapsed * 1000);
+            METRIC_HISTO("stonemill_optimization_seconds",
+                ("mill_id=\"" + std::to_string(req->mill_id) + "\"").c_str(), elapsed);
+            METRIC_COUNTER_INC("stonemill_optimizations_total", "status=\"ok\"", 1);
         } catch (const std::exception& e) {
             resp.set_error(e.what());
+            LOG_ERROR("SizeOptimizer req_id={} error: {}", req->request_id, e.what());
+            METRIC_COUNTER_INC("stonemill_optimizations_total", "status=\"error\"", 1);
         } catch (...) {
             resp.set_error("unknown exception");
+            LOG_ERROR("SizeOptimizer req_id={} unknown error", req->request_id);
+            METRIC_COUNTER_INC("stonemill_optimizations_total", "status=\"error\"", 1);
         }
         if (!resp_out_.push(resp)) {
-            std::cerr << "[SizeOptimizer] resp queue full, dropped" << std::endl;
+            LOG_ERROR("SizeOptimizer resp queue full, dropped req_id={}", req->request_id);
+            METRIC_COUNTER_INC("stonemill_queue_dropped_total", "queue=\"opt_resp\"", 1);
         }
     }
 }

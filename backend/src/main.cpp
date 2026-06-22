@@ -1,6 +1,8 @@
 #include "common.h"
 #include "message_queue.h"
 #include "config_loader.h"
+#include "logger.h"
+#include "metrics.h"
 #include "modules/mqtt_receiver.h"
 #include "modules/dem_simulator.h"
 #include "modules/size_optimizer.h"
@@ -29,7 +31,7 @@ static void run_smoke_test(
     OptReqQueue& opt_req, OptRespQueue& opt_resp,
     AlertQueue& alert_q) {
 
-    std::cout << "=== Smoke Test: Inject sensor data ===" << std::endl;
+    LOG_INFO("Smoke Test: Inject sensor data");
     for (int i = 0; i < 3; ++i) {
         SensorMessage msg{};
         msg.mill_id = 1;
@@ -53,9 +55,10 @@ static void run_smoke_test(
     AlertMessage am{};
     int alert_cnt = 0;
     while (alert_q.pop(am).has_value()) alert_cnt++;
-    std::cout << "[Smoke] Alerts triggered: " << alert_cnt << std::endl;
+    LOG_INFO("Smoke alerts triggered: {}", alert_cnt);
+    METRIC_GAUGE_SET("stonemill_alerts_active", "mill_id=\"1\"", alert_cnt);
 
-    std::cout << "=== Smoke Test: DEM simulation request ===" << std::endl;
+    LOG_INFO("Smoke Test: DEM simulation request");
     DEMRequest dr{};
     dr.type = DEMRequest::T_SIMULATE;
     dr.request_id = 1001;
@@ -76,17 +79,19 @@ static void run_smoke_test(
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     auto t1 = std::chrono::steady_clock::now();
+    double dem_elapsed = std::chrono::duration<double>(t1 - t0).count();
     if (drr.has_value()) {
-        std::cout << "[Smoke] DEM resp success=" << drr->success
-                  << " particles=" << drr->particle_count
-                  << " breakage_rate=" << drr->breakage_rate
-                  << " elapsed=" << std::chrono::duration<double, std::milli>(t1 - t0).count() << "ms"
-                  << std::endl;
+        LOG_INFO("Smoke DEM resp: success={}, particles={}, breakage={:.3f}, elapsed={:.2f}ms",
+                 drr->success, drr->particle_count, drr->breakage_rate, dem_elapsed * 1000);
+        METRIC_HISTO("stonemill_dem_simulation_seconds", "mill_id=\"1\",coarse=true", dem_elapsed);
+        METRIC_COUNTER_INC("stonemill_dem_simulations_total", "status=\"ok\"", 1);
+        METRIC_GAUGE_SET("stonemill_active_particles", "mill_id=\"1\"", drr->particle_count);
     } else {
-        std::cout << "[Smoke] DEM response TIMEOUT" << std::endl;
+        LOG_WARN("Smoke DEM response TIMEOUT");
+        METRIC_COUNTER_INC("stonemill_dem_simulations_total", "status=\"timeout\"", 1);
     }
 
-    std::cout << "=== Smoke Test: Optimization request (small) ===" << std::endl;
+    LOG_INFO("Smoke Test: Optimization request (small)");
     OptimizeRequest orq{};
     orq.request_id = 2001;
     orq.mill_id = 1;
@@ -104,26 +109,28 @@ static void run_smoke_test(
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     t1 = std::chrono::steady_clock::now();
+    double opt_elapsed = std::chrono::duration<double>(t1 - t0).count();
     if (orr.has_value()) {
-        std::cout << "[Smoke] Opt resp success=" << orr->success
-                  << " best_speed=" << orr->best_speed
-                  << " best_gap=" << orr->best_gap
-                  << " fitness=" << orr->fitness
-                  << " generations=" << orr->generations
-                  << " elapsed=" << std::chrono::duration<double, std::milli>(t1 - t0).count() << "ms"
-                  << std::endl;
+        LOG_INFO("Smoke Opt resp: success={}, speed={:.2f}, gap={:.3f}, fitness={:.3f}, gens={}, elapsed={:.2f}ms",
+                 orr->success, orr->best_speed, orr->best_gap, orr->fitness, orr->generations, opt_elapsed * 1000);
+        METRIC_HISTO("stonemill_optimization_seconds", "mill_id=\"1\"", opt_elapsed);
+        METRIC_COUNTER_INC("stonemill_optimizations_total", "status=\"ok\"", 1);
     } else {
-        std::cout << "[Smoke] Opt response TIMEOUT" << std::endl;
+        LOG_WARN("Smoke Opt response TIMEOUT");
+        METRIC_COUNTER_INC("stonemill_optimizations_total", "status=\"timeout\"", 1);
     }
 }
 
 int main(int argc, char** argv) {
-    std::cout << "=== Stone Mill DEM Modular Service ===" << std::endl;
-    std::cout << "Architecture: MqttReceiver -> SensorQueue -> AlarmMqtt -> AlertQueue\n"
-              << "                         \\-> (DB write - future)\n"
-              << "              DEMReqQueue -> DemSimulator -> DEMRespQueue\n"
-              << "              OptReqQueue -> SizeOptimizer -> OptRespQueue"
-              << std::endl;
+    Logger::init("stonemill", "", LogLevel::DEBUG);
+    LOG_INFO("=== Stone Mill DEM Modular Service ===");
+    LOG_INFO("Architecture: MqttReceiver -> SensorQueue -> AlarmMqtt -> AlertQueue");
+    LOG_INFO("                         \\-> (DB write)");
+    LOG_INFO("              DEMReqQueue -> DemSimulator -> DEMRespQueue");
+    LOG_INFO("              OptReqQueue -> SizeOptimizer -> OptRespQueue");
+
+    auto& metrics = Metrics::instance();
+    metrics.start_http_server(9091);
 
     std::string config_path = "backend/config/app_config.json";
     if (argc > 1) config_path = argv[1];
@@ -132,14 +139,14 @@ int main(int argc, char** argv) {
     AppConfig app_cfg;
     if (cfg_opt.has_value()) {
         app_cfg = *cfg_opt;
-        std::cout << "[Main] Config loaded from " << config_path << std::endl;
+        LOG_INFO("Config loaded from {}", config_path);
     } else {
         app_cfg.process = default_process_config();
         app_cfg.dem = default_dem_config();
         app_cfg.breakage = default_breakage_model();
         app_cfg.optimization = default_optimization_params();
         app_cfg.thresholds = default_alert_thresholds();
-        std::cout << "[Main] Using built-in defaults" << std::endl;
+        LOG_WARN("Config not found, using built-in defaults");
     }
 
     SensorQueue sensor_q(32768);
@@ -173,30 +180,34 @@ int main(int argc, char** argv) {
             ran_smoke = true;
             try {
                 run_smoke_test(receiver, dem_req_q, dem_resp_q, opt_req_q, opt_resp_q, alert_q);
-                std::cout << "\n=== Smoke test PASSED, service running. Press Ctrl+C to stop. ===" << std::endl;
+                LOG_INFO("Smoke test PASSED, service running. Press Ctrl+C to stop.");
             } catch (const std::exception& e) {
-                std::cerr << "[Main] Smoke test error: " << e.what() << std::endl;
+                LOG_ERROR("Smoke test error: {}", e.what());
             } catch (...) {
-                std::cerr << "[Main] Smoke test unknown error" << std::endl;
+                LOG_ERROR("Smoke test unknown error");
             }
         }
 
         tick++;
         if (tick % 200 == 0) {
-            std::cout << "[Main] alive tick=" << tick
-                      << " sensor_dropped=" << sensor_q.dropped()
-                      << " alert_dropped=" << alert_q.dropped()
-                      << std::endl;
+            auto s_dropped = sensor_q.dropped();
+            auto a_dropped = alert_q.dropped();
+            LOG_INFO("alive tick={}, sensor_dropped={}, alert_dropped={}", tick, s_dropped, a_dropped);
+            METRIC_GAUGE_SET("stonemill_sensor_queue_size", "queue=\"sensor\"", sensor_q.approx_size());
+            METRIC_GAUGE_SET("stonemill_sensor_queue_size", "queue=\"alert\"", alert_q.approx_size());
+            if (s_dropped > 0) METRIC_COUNTER_INC("stonemill_queue_dropped_total", "queue=\"sensor\"", s_dropped);
+            if (a_dropped > 0) METRIC_COUNTER_INC("stonemill_queue_dropped_total", "queue=\"alert\"", a_dropped);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    std::cout << "\n[Main] Shutting down..." << std::endl;
+    LOG_INFO("Shutting down...");
+    metrics.stop_http_server();
     alarm.stop();
     optimizer.stop();
     dem_sim.stop();
     receiver.stop();
-
-    std::cout << "[Main] Bye." << std::endl;
+    Logger::flush();
+    LOG_INFO("Bye.");
     return 0;
 }

@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1.5
+# Stone Mill DEM - Sensor Simulator
+FROM python:3.12-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /sim
+COPY simulator/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY simulator/ ./
+
+ENV SIM_GRAIN=wheat \
+    SIM_MILLS=3 \
+    SIM_INTERVAL=5 \
+    MQTT_HOST=mosquitto \
+    MQTT_PORT=1883 \
+    MQTT_TOPIC=stone_mill/sensor \
+    MQTT_ALERT_TOPIC=stone_mill/alerts
+
+EXPOSE 0/udp
+ENTRYPOINT ["python", "-u", "sensor_simulator.py"]
+CMD ["--json"]

@@ -1,0 +1,219 @@
+# Stone Mill DEM - docker-compose.yml
+# 古代石碾粉碎过程离散元仿真与粒度优化系统
+# 包含：C++后端、ClickHouse、Mosquitto(MQTT Broker)、传感器模拟器、
+#       Nginx前端、Prometheus、Grafana
+
+services:
+  # ========================================
+  # MQTT Broker (Eclipse Mosquitto)
+  # ========================================
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    container_name: stone-mill-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./deploy/mosquitto/config:/mosquitto/config:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/clients/connected' -C 1 -W 3 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # ClickHouse (列式存储 + 降采样 + TTL)
+  # ========================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: stone-mill-clickhouse
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+      - "9363:9363"
+    volumes:
+      - ./deploy/clickhouse/config/config.xml:/etc/clickhouse-server/config.d/custom.xml:ro
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-log:/var/log/clickhouse-server
+    environment:
+      TZ: Asia/Shanghai
+      CLICKHOUSE_DB: stone_mill
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8123/?query=SELECT%201"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # C++ 后端服务 (DEM + GA + 告警)
+  # ========================================
+  stone-mill-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: runtime
+    image: stone-mill/backend:latest
+    container_name: stone-mill-backend
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "9091:9091"
+    volumes:
+      - ./backend/config:/opt/stone-mill/etc:ro
+    environment:
+      TZ: Asia/Shanghai
+    command: ["/opt/stone-mill/etc/app_config.json"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9091/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # 传感器模拟器 (多谷物 + 含水率曲线)
+  # ========================================
+  sensor-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulator
+    image: stone-mill/simulator:latest
+    container_name: stone-mill-simulator
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SIM_GRAIN: wheat
+      SIM_MILLS: "3"
+      SIM_INTERVAL: "5"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: stone_mill/sensor
+      MQTT_ALERT_TOPIC: stone_mill/alerts
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # 前端 (Nginx + gzip_static)
+  # ========================================
+  stone-mill-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: stone-mill/frontend:latest
+    container_name: stone-mill-frontend
+    restart: unless-stopped
+    depends_on:
+      stone-mill-backend:
+        condition: service_healthy
+    ports:
+      - "8088:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # Prometheus 指标采集
+  # ========================================
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: stone-mill-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=20GB'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - stone-mill-net
+
+  # ========================================
+  # Grafana 可视化
+  # ========================================
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    container_name: stone-mill-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: Asia/Shanghai
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: stone_mill_2024
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - stone-mill-net
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  clickhouse-data:
+  clickhouse-log:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  stone-mill-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

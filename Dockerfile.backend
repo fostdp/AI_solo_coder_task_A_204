@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.6
+# Stone Mill DEM - C++ Backend (Multi-stage build)
+#  Stage 1: build with full toolchain
+FROM debian:bookworm AS builder
+LABEL stage=builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git ca-certificates pkg-config \
+        libboost-all-dev libspdlog-dev libtbb-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . /src/
+RUN --mount=type=cache,target=/src/build \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release \
+          -DUSE_BOOST_LOCKFREE=ON -DUSE_SPDLOG=ON \
+          -DUSE_MQTT=OFF -DBUILD_TESTS=OFF \
+    && cmake --build build -j$(nproc) \
+    && mkdir -p /opt/stone-mill/bin /opt/stone-mill/etc \
+    && cp build/bin/stone_mill_dem /opt/stone-mill/bin/ \
+    && cp -r backend/config/* /opt/stone-mill/etc/
+
+#  Stage 2: slim runtime image
+FROM debian:bookworm-slim AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libstdc++6 libgcc1 ca-certificates tzdata curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
+
+COPY --from=builder /opt/stone-mill /opt/stone-mill
+WORKDIR /opt/stone-mill
+ENV PATH="/opt/stone-mill/bin:${PATH}"
+ENV TZ=Asia/Shanghai
+
+EXPOSE 8080 9091
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:9091/health || exit 1
+
+ENTRYPOINT ["stone_mill_dem"]
+CMD ["/opt/stone-mill/etc/app_config.json"]

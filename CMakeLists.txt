@@ -29,6 +29,8 @@ set(BACKEND_SOURCE_DIR ${CMAKE_SOURCE_DIR}/backend/src)
 set(BACKEND_SOURCES
     ${BACKEND_SOURCE_DIR}/common.cpp
     ${BACKEND_SOURCE_DIR}/config_loader.cpp
+    ${BACKEND_SOURCE_DIR}/logger.cpp
+    ${BACKEND_SOURCE_DIR}/metrics.cpp
     ${BACKEND_SOURCE_DIR}/dem_model.cpp
     ${BACKEND_SOURCE_DIR}/genetic_optimizer.cpp
     ${BACKEND_SOURCE_DIR}/alert_system.cpp
@@ -43,6 +45,8 @@ set(BACKEND_HEADERS
     ${BACKEND_INCLUDE_DIR}/common.h
     ${BACKEND_INCLUDE_DIR}/message_queue.h
     ${BACKEND_INCLUDE_DIR}/config_loader.h
+    ${BACKEND_INCLUDE_DIR}/logger.h
+    ${BACKEND_INCLUDE_DIR}/metrics.h
     ${BACKEND_INCLUDE_DIR}/dem_model.h
     ${BACKEND_INCLUDE_DIR}/genetic_optimizer.h
     ${BACKEND_INCLUDE_DIR}/alert_system.h
@@ -84,6 +88,18 @@ if(USE_MQTT)
     endif()
 endif()
 
+option(USE_SPDLOG "Use spdlog for structured logging" ON)
+if(USE_SPDLOG)
+    find_package(spdlog QUIET)
+    if(spdlog_FOUND)
+        target_link_libraries(stone_mill_dem PRIVATE spdlog::spdlog)
+        target_compile_definitions(stone_mill_dem PRIVATE USE_SPDLOG)
+        message(STATUS "spdlog found: using spdlog for logging")
+    else()
+        message(WARNING "spdlog not found, falling back to iostream logger")
+    endif()
+endif()
+
 option(BUILD_TESTS "Build tests" OFF)
 if(BUILD_TESTS)
     enable_testing()
@@ -107,5 +123,6 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Boost.Lockfree: ${USE_BOOST_LOCKFREE}")
 message(STATUS "MQTT support: ${USE_MQTT}")
+message(STATUS "spdlog logging: ${USE_SPDLOG}")
 message(STATUS "Build tests: ${BUILD_TESTS}")
 message(STATUS "========================================")

@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<yandex>
+    <!-- 日志 -->
+    <logger>
+        <level>information</level>
+        <console>true</console>
+    </logger>
+
+    <!-- HTTP 端口 -->
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+
+    <!-- 监听所有地址 -->
+    <listen_host>0.0.0.0</listen_host>
+
+    <!-- 时区 -->
+    <timezone>Asia/Shanghai</timezone>
+
+    <!-- 数据路径（沿用官方镜像） -->
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+
+    <!-- 内存限制 -->
+    <max_server_memory_usage_to_ram_ratio>0.7</max_server_memory_usage_to_ram_ratio>
+    <max_memory_usage_for_all_queries>10000000000</max_memory_usage_for_all_queries>
+
+    <!-- mark_cache -->
+    <mark_cache_size>5368709120</mark_cache_size>
+
+    <!-- 合并树设置 -->
+    <merge_tree>
+        <max_suspicious_broken_parts>10</max_suspicious_broken_parts>
+        <parts_to_throw_insert>300</parts_to_throw_insert>
+        <parts_to_delay_insert>150</parts_to_delay_insert>
+    </merge_tree>
+
+    <users_config>users.xml</users_config>
+    <include_from>/etc/clickhouse-server/config.d/*.xml</include_from>
+</yandex>

@@ -1,7 +1,10 @@
 #include "modules/alarm_mqtt.h"
+#include "logger.h"
+#include "metrics.h"
 #include <chrono>
 #include <iostream>
 #include <cstring>
+#include <unordered_map>
 
 namespace stone_mill {
 
@@ -19,13 +22,14 @@ AlarmMqtt::~AlarmMqtt() { stop(); }
 void AlarmMqtt::start() {
     running_.store(true);
     thread_ = std::thread(&AlarmMqtt::worker, this);
-    std::cout << "[AlarmMqtt] started (alert_topic=" << proc_cfg_.alert_topic << ")" << std::endl;
+    LOG_INFO("AlarmMqtt started (alert_topic={}, mqtt={}:{})",
+             proc_cfg_.alert_topic, proc_cfg_.mqtt_broker_host, proc_cfg_.mqtt_broker_port);
 }
 
 void AlarmMqtt::stop() {
     if (running_.exchange(false)) {
         if (thread_.joinable()) thread_.join();
-        std::cout << "[AlarmMqtt] stopped" << std::endl;
+        LOG_INFO("AlarmMqtt stopped");
     }
 }
 
@@ -43,15 +47,28 @@ SensorData AlarmMqtt::sensor_msg_to_data(const SensorMessage& m) {
     return d;
 }
 
+static const char* alert_type_name(AlertType t) {
+    switch (t) {
+        case AlertType::WEAR: return "wear";
+        case AlertType::LOW_YIELD: return "low_yield";
+        case AlertType::OVERSPEED: return "overspeed";
+        case AlertType::OVERPRESSURE: return "overpressure";
+    }
+    return "unknown";
+}
+
 void AlarmMqtt::worker() {
     std::vector<SensorMessage> batch;
     batch.reserve(32);
+    std::unordered_map<uint32_t, size_t> active_per_mill;
+
     while (running_.load()) {
         size_t n = sensor_in_.pop_bulk(batch, 32);
         if (n == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
             continue;
         }
+        size_t total_alerts = 0;
         for (auto& sm : batch) {
             if (!sm.valid) continue;
             SensorData d = sensor_msg_to_data(sm);
@@ -70,8 +87,26 @@ void AlarmMqtt::worker() {
                 std::strncpy(am.alert_id, a.alert_id.c_str(), MSG_ID_LEN - 1);
                 std::strncpy(am.message, a.message.c_str(), MSG_ERR_LEN - 1);
                 if (!alert_out_.push(am)) {
-                    std::cerr << "[AlarmMqtt] alert queue full, dropped" << std::endl;
+                    LOG_ERROR("AlarmMqtt: alert queue full, dropped type={} mill={}",
+                              alert_type_name(a.type), a.mill_id);
+                    METRIC_COUNTER_INC("stonemill_queue_dropped_total", "queue=\"alert\"", 1);
+                } else {
+                    total_alerts++;
+                    std::string labels = "mill_id=\"" + std::to_string(a.mill_id)
+                        + "\",type=\"" + alert_type_name(a.type)
+                        + "\",resolved=\"" + (a.resolved ? "true" : "false") + "\"";
+                    METRIC_COUNTER_INC("stonemill_alerts_total", labels, 1);
+                    LOG_WARN("AlarmMqtt: {} mill={} value={:.2f} thresh={:.2f} resolved={} msg={}",
+                             alert_type_name(a.type), a.mill_id,
+                             a.current_value, a.threshold, a.resolved, a.message);
                 }
+                if (!a.resolved) active_per_mill[a.mill_id]++;
+            }
+        }
+        if (total_alerts > 0) {
+            for (auto& kv : active_per_mill) {
+                METRIC_GAUGE_SET("stonemill_alerts_active",
+                    ("mill_id=\"" + std::to_string(kv.first) + "\"").c_str(), kv.second);
             }
         }
     }
